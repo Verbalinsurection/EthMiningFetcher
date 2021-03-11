@@ -5,21 +5,11 @@
 import requests
 from datetime import datetime
 
+BASE_API = 'https://api.coingecko.com/api/v3'
+API_COIN = BASE_API + '/coins/markets?vs_currency=:fiat:&ids=:crypto:'
+
 
 class Coin():
-    BASE_API = 'https://api.coingecko.com/api/v3'
-    API_COIN = BASE_API + '/coins/markets?vs_currency=:fiat:&ids=:crypto:'
-
-    __fiat = None
-    __crypto = None
-
-    price = 0.0
-    pc_24h = 0.0
-    ath = 0.0
-    last_update = ''
-    last_update_txt = ''
-    last_error = None
-
     def __init__(self, fiat, crypto):
         """Init of Coin class."""
         self.__fiat = fiat
@@ -46,7 +36,8 @@ class Coin():
 
     def update(self):
         """Update coin market informations."""
-        cust_url = self.API_COIN.replace(':fiat:', self.__fiat)
+        self.last_error = None
+        cust_url = API_COIN.replace(':fiat:', self.__fiat)
         cust_url = cust_url.replace(':crypto:', self.__crypto)
         coin_json = self.__api_request(cust_url)
         if coin_json is not None:
@@ -57,3 +48,11 @@ class Coin():
                                     coin_json[0]['last_updated'],
                                     "%Y-%m-%dT%H:%M:%S.%f%z").astimezone()
             self.last_update_txt = self.last_update.strftime('%Y-%m-%d %H:%M')
+            return True
+
+        self.last_error = 'Can\'t retrieve json result'
+        return False
+
+    @property
+    def fiat(self):
+        return self.__fiat

@@ -6,20 +6,14 @@ import requests
 
 from .ethpay import EthPay
 
+BASE_API = 'https://www.coincalculators.io/api'
+CC_API = BASE_API + '?name=:crypto:&hashrate=:hrate:'
+
 
 class CoinCalculators():
-    BASE_API = 'https://www.coincalculators.io/api'
-    CC_API = BASE_API + '?name=:crypto:&hashrate=:hrate:'
-
-    __crypto = None
-
-    eth_pay = None
-    last_error = None
-
     def __init__(self, crypto):
         """Init of CoinCalculators class."""
         self.__crypto = crypto
-        self.eth_pay = EthPay()
 
     def __api_request(self, api_url):
         """Make CoinCalculators API call"""
@@ -40,13 +34,19 @@ class CoinCalculators():
             self.last_error = err
             return None
 
-    def update(self, hrate):
+    def get_calcul(self, hrate):
         """Update CoinCalculators informations."""
-        cust_url = self.CC_API.replace(':crypto:', self.__crypto)
+        self.last_error = None
+        cust_url = CC_API.replace(':crypto:', self.__crypto)
         cust_url = cust_url.replace(':hrate:', str(hrate * 1000000))
         cc_json = self.__api_request(cust_url)
         if cc_json is not None:
-            self.eth_pay.eth_hour = round(cc_json['rewardsInHour'], 5)
-            self.eth_pay.eth_day = round(cc_json['rewardsInDay'], 5)
-            self.eth_pay.eth_week = round(cc_json['rewardsInWeek'], 5)
-            self.eth_pay.eth_month = round(cc_json['rewardsInMonth'], 5)
+            eth_pay = EthPay()
+            eth_pay.eth_hour = round(cc_json['rewardsInHour'], 5)
+            eth_pay.eth_day = round(cc_json['rewardsInDay'], 5)
+            eth_pay.eth_week = round(cc_json['rewardsInWeek'], 5)
+            eth_pay.eth_month = round(cc_json['rewardsInMonth'], 5)
+            return eth_pay
+
+        self.last_error = 'Can\'t retrieve json result'
+        return None

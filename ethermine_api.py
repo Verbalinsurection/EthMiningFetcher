@@ -8,44 +8,29 @@ import requests
 
 from .ethpay import EthPay
 
+ETHM_API_BASE = 'https://api.ethermine.org'
+ETHM_API_POOLSTATS = ETHM_API_BASE + '/poolStats'
+ETHM_API_MINERDASH = ETHM_API_BASE + '/miner/:miner/dashboard'
+ETHM_API_MINERSTAT = ETHM_API_BASE + '/miner/:miner/currentStats'
+ETHM_API_MINERPAYOUT = ETHM_API_BASE + '/miner/:miner/payouts'
+ETHM_API_WORKER = ETHM_API_BASE + '/miner/:miner/worker/:worker/history'
+
 DATE_FORMAT = '%Y-%m-%d %H:%M'
 MINER_TAG = ':miner'
 WORKER_TAG = ':worker'
 
 
+def hrate_mh(hashrate):
+    return round(hashrate / 1000000, 2)
+
+
 class Ethermine():
-    ETHM_API_BASE = 'https://api.ethermine.org'
-    ETHM_API_POOLSTATS = ETHM_API_BASE + '/poolStats'
-    ETHM_API_MINERDASH = ETHM_API_BASE + '/miner/:miner/dashboard'
-    ETHM_API_MINERSTAT = ETHM_API_BASE + '/miner/:miner/currentStats'
-    ETHM_API_MINERPAYOUT = ETHM_API_BASE + '/miner/:miner/payouts'
-    ETHM_API_WORKER = ETHM_API_BASE + '/miner/:miner/worker/:worker/history'
+    __pool_name = 'Ethermine'
 
-    __wallet = None
-
-    pool_state = 'N/A'
-    stat_time = ''
-    stat_time_txt = ''
-    reported_hrate = 0
-    current_hrate = 0
-    valid_shares = 0
-    invalid_shares = 0
-    stale_shares = 0
-    active_workers = 0
-    last_histo = None
-    max_index = 0
-    unpaid_balance = 0
-    min_payout = 0
-    next_payout = None
-    next_payout_txt = ''
-    eth_pay_stats = None
-    eth_pay_from_last = None
-    gain_progress = 0.0
-    last_error = None
-
-    def __init__(self, eth_wallet):
+    def __init__(self, eth_wallet, history=True):
         """Init of Ethermine class."""
         self.__wallet = eth_wallet
+        self.__history = history
         self.workers = []
         self.payouts = []
         self.stats_histo = []
@@ -57,13 +42,14 @@ class Ethermine():
 
     def update(self):
         """Update Ethermine informations."""
+        self.last_error = None
         self.__update_pool()
         self.__update_miner_dash()
         self.__update_miner_payouts()
         self.__update_stats_coin()
-
-    def __hrate_mh(self, hashrate):
-        return round(hashrate / 1000000, 2)
+        if self.last_error is not None:
+            return False
+        return True
 
     def api_request(self, api_url):
         """Make Ethermine API call"""
@@ -86,31 +72,31 @@ class Ethermine():
 
     def __update_pool(self):
         """Update Ethermine pool informations."""
-        pool_json = self.api_request(self.ETHM_API_POOLSTATS)
+        pool_json = self.api_request(ETHM_API_POOLSTATS)
         if pool_json is None:
             self.pool_state = 'Unavailable'
+            self.last_error = \
+                '__update_pool -- Can\'t retrieve json result'
         else:
             self.pool_state = pool_json['status']
 
     def __update_miner_dash(self):
         """Update Ethermine miner dashboard."""
-        cust_url = self.ETHM_API_MINERDASH.replace(MINER_TAG, self.__wallet)
+        cust_url = ETHM_API_MINERDASH.replace(MINER_TAG, self.__wallet)
         dash_json = self.api_request(cust_url)
         if dash_json is not None:
             try:
                 data_json = dash_json['data']
                 self.workers.clear()
                 for json_worker in data_json['workers']:
-                    worker = Worker(self.__wallet, json_worker)
+                    worker = Worker(self.__wallet, json_worker, self.__history)
                     self.workers.append(worker)
                 cstat_json = data_json['currentStatistics']
                 self.stat_time = datetime.fromtimestamp(
                     cstat_json['time']).astimezone()
                 self.stat_time_txt = self.stat_time.strftime(DATE_FORMAT)
-                self.reported_hrate = self.__hrate_mh(
-                    cstat_json['reportedHashrate'])
-                self.current_hrate = self.__hrate_mh(
-                    cstat_json['currentHashrate'])
+                self.reported_hrate = hrate_mh(cstat_json['reportedHashrate'])
+                self.current_hrate = hrate_mh(cstat_json['currentHashrate'])
                 self.valid_shares = cstat_json['validShares']
                 self.invalid_shares = cstat_json['invalidShares']
                 self.stale_shares = cstat_json['staleShares']
@@ -118,16 +104,20 @@ class Ethermine():
                 self.unpaid_balance = round(cstat_json['unpaid'] / 10e17, 5)
                 self.min_payout = round(
                     data_json['settings']['minPayout'] / 10e17, 5)
-                self.stats_histo.clear()
-                for json_histo in data_json['statistics']:
-                    stat_histo = EthermineH(json_histo)
-                    self.stats_histo.append(stat_histo)
-                self.last_histo = \
-                    self.stats_histo[len(self.stats_histo) - 1 - 3]
-                self.max_index = len(self.stats_histo) - 1
-                self.calc_avg()
+                if self.__history:
+                    self.stats_histo.clear()
+                    for json_histo in data_json['statistics']:
+                        stat_histo = EthermineH(json_histo)
+                        self.stats_histo.append(stat_histo)
+                    self.last_histo = \
+                        self.stats_histo[len(self.stats_histo) - 1 - 3]
+                    self.max_index = len(self.stats_histo) - 1
+                    self.calc_avg()
             except KeyError as e:
                 print(e)
+        else:
+            self.last_error = \
+                '__update_miner_dash -- Can\'t retrieve json result'
 
     def __sub_avg(self, h_range, max_index):
         all_hrate = 0
@@ -150,13 +140,17 @@ class Ethermine():
         self.avg_hrate_24[2] = self.__sub_avg(nb_entry - 6, max_index - 6)
 
     def __update_miner_payouts(self):
-        cust_url = self.ETHM_API_MINERPAYOUT.replace(MINER_TAG, self.__wallet)
+        cust_url = ETHM_API_MINERPAYOUT.replace(MINER_TAG, self.__wallet)
         payouts_json = self.api_request(cust_url)
         if payouts_json is not None:
             self.payouts.clear()
             for json_payout in payouts_json['data']:
                 payout = Payout(json_payout)
                 self.payouts.append(payout)
+        else:
+            self.last_error = \
+                '__update_miner_payouts -- Can\'t retrieve json result'
+            return
         time_delta = datetime.now().astimezone() - self.payouts[0].paid_on
         time_delta_m = time_delta.days * 1440 + (time_delta.seconds / 60)
         gain_min = self.unpaid_balance / (time_delta_m)
@@ -167,7 +161,7 @@ class Ethermine():
         self.gain_progress = self.unpaid_balance / self.min_payout
 
     def __update_stats_coin(self):
-        cust_url = self.ETHM_API_MINERSTAT.replace(MINER_TAG, self.__wallet)
+        cust_url = ETHM_API_MINERSTAT.replace(MINER_TAG, self.__wallet)
         stats_json = self.api_request(cust_url)
         if stats_json is not None:
             coins_pmin = stats_json['data']['coinsPerMin']
@@ -175,6 +169,9 @@ class Ethermine():
             self.eth_pay_stats.eth_day = round(coins_pmin * 60 * 24, 5)
             self.eth_pay_stats.eth_week = round(coins_pmin * 60 * 24 * 7, 5)
             self.eth_pay_stats.eth_month = round(coins_pmin * 60 * 24 * 30, 5)
+        else:
+            self.last_error = \
+                '__update_stats_coin -- Can\'t retrieve json result'
 
     def update_next_payout(self, actual_gain_hour):
         to_gain = self.min_payout - self.unpaid_balance
@@ -184,36 +181,29 @@ class Ethermine():
             timedelta(minutes=minutes_to_tresh)
         self.next_payout_txt = self.next_payout.strftime(DATE_FORMAT)
 
+    @property
+    def wallet(self):
+        return self.__wallet
+
+    @property
+    def pool_name(self):
+        return self.__pool_name
+
 
 class EthermineH():
-    stat_time = ''
-    stat_time_txt = ''
-    reported_hrate = 0
-    current_hrate = 0
-    valid_shares = 0
-    invalid_shares = 0
-    stale_shares = 0
-
     def __init__(self, json_data):
         self.stat_time = datetime.fromtimestamp(
             json_data['time']).astimezone()
         self.stat_time_txt = self.stat_time.strftime(DATE_FORMAT)
-        self.reported_hrate = self.__hrate_mh(
-            json_data['reportedHashrate'])
-        self.current_hrate = self.__hrate_mh(
-            json_data['currentHashrate'])
+        self.reported_hrate = hrate_mh(json_data['reportedHashrate'])
+        self.current_hrate = hrate_mh(json_data['currentHashrate'])
         self.valid_shares = json_data['validShares']
         self.invalid_shares = json_data['invalidShares']
         self.stale_shares = json_data['staleShares']
 
-    def __hrate_mh(self, hashrate):
-        return round(hashrate / 1000000, 2)
-
 
 class Worker(Ethermine):
-    name = ''
-
-    def __init__(self, wallet, json_data):
+    def __init__(self, wallet, json_data, history):
         self.stats_histo = []
         self.avg_hrate_1 = [0.0] * 3  # actual, 30m, 60m
         self.avg_hrate_6 = [0.0] * 3  # actual, 30m, 60m
@@ -221,15 +211,16 @@ class Worker(Ethermine):
         self.__wallet = wallet
         self.name = json_data['worker']
         self.last_seen = json_data['lastSeen']
-        self.reported_hrate = json_data['reportedHashrate']
-        self.current_hrate = json_data['currentHashrate']
+        self.reported_hrate = hrate_mh(json_data['reportedHashrate'])
+        self.current_hrate = hrate_mh(json_data['currentHashrate'])
         self.valid_shares = json_data['validShares']
         self.invalid_shares = json_data['invalidShares']
         self.stale_shares = json_data['staleShares']
-        self.__process_histo()
+        if history:
+            self.__process_histo()
 
     def __process_histo(self):
-        cust_url = Ethermine.ETHM_API_WORKER.replace(MINER_TAG, self.__wallet)
+        cust_url = ETHM_API_WORKER.replace(MINER_TAG, self.__wallet)
         cust_url = cust_url.replace(WORKER_TAG, self.name)
         dash_json = self.api_request(cust_url)
         if dash_json is not None:
@@ -245,13 +236,12 @@ class Worker(Ethermine):
                 self.calc_avg()
             except KeyError as e:
                 print(e)
+        else:
+            self.last_error = \
+                '__process_histo -- Can\'t retrieve json result'
 
 
 class Payout():
-    paid_on = None
-    paid_on_txt = None
-    amount = None
-
     def __init__(self, json_data):
         self.paid_on = datetime.fromtimestamp(
             json_data['paidOn']).astimezone()
