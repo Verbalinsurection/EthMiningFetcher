@@ -50,7 +50,8 @@ class Coin():
             self.last_update_txt = self.last_update.strftime('%Y-%m-%d %H:%M')
             return True
 
-        self.last_error = 'Can\'t retrieve json result'
+        if self.last_error is None:
+            self.last_error = 'Can\'t retrieve json result'
         return False
 
     @property

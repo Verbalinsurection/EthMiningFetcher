@@ -47,6 +47,7 @@ class Ethermine():
         self.__update_miner_dash()
         self.__update_miner_payouts()
         self.__update_stats_coin()
+        self.__update_next_payout()
         if self.last_error is not None:
             return False
         return True
@@ -75,8 +76,9 @@ class Ethermine():
         pool_json = self.api_request(ETHM_API_POOLSTATS)
         if pool_json is None:
             self.pool_state = 'Unavailable'
-            self.last_error = \
-                '__update_pool -- Can\'t retrieve json result'
+            if self.last_error is None:
+                self.last_error = \
+                    '__update_pool -- Can\'t retrieve json result'
         else:
             self.pool_state = pool_json['status']
 
@@ -114,10 +116,11 @@ class Ethermine():
                     self.max_index = len(self.stats_histo) - 1
                     self.calc_avg()
             except KeyError as e:
-                print(e)
+                self.last_error = '__update_miner_dash: ' + str(e)
         else:
-            self.last_error = \
-                '__update_miner_dash -- Can\'t retrieve json result'
+            if self.last_error is None:
+                self.last_error = \
+                    '__update_miner_dash -- Can\'t retrieve json result'
 
     def __sub_avg(self, h_range, max_index):
         all_hrate = 0
@@ -148,8 +151,9 @@ class Ethermine():
                 payout = Payout(json_payout)
                 self.payouts.append(payout)
         else:
-            self.last_error = \
-                '__update_miner_payouts -- Can\'t retrieve json result'
+            if self.last_error is None:
+                self.last_error = \
+                    '__update_miner_payouts -- Can\'t retrieve json result'
             return
         time_delta = datetime.now().astimezone() - self.payouts[0].paid_on
         time_delta_m = time_delta.days * 1440 + (time_delta.seconds / 60)
@@ -170,12 +174,13 @@ class Ethermine():
             self.eth_pay_stats.eth_week = round(coins_pmin * 60 * 24 * 7, 5)
             self.eth_pay_stats.eth_month = round(coins_pmin * 60 * 24 * 30, 5)
         else:
-            self.last_error = \
-                '__update_stats_coin -- Can\'t retrieve json result'
+            if self.last_error is None:
+                self.last_error = \
+                    '__update_stats_coin -- Can\'t retrieve json result'
 
-    def update_next_payout(self, actual_gain_hour):
+    def __update_next_payout(self):
         to_gain = self.min_payout - self.unpaid_balance
-        minutes_to_tresh = to_gain / (actual_gain_hour / 60)
+        minutes_to_tresh = to_gain / (self.eth_pay_stats.eth_hour / 60)
         self.next_payout = \
             datetime.now().astimezone() + \
             timedelta(minutes=minutes_to_tresh)
@@ -237,8 +242,9 @@ class Worker(Ethermine):
             except KeyError as e:
                 print(e)
         else:
-            self.last_error = \
-                '__process_histo -- Can\'t retrieve json result'
+            if self.last_error is None:
+                self.last_error = \
+                    '__process_histo -- Can\'t retrieve json result'
 
 
 class Payout():

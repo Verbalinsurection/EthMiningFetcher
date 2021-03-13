@@ -16,7 +16,7 @@ class EtherWallet():
         self.__api_key = api_key
         self.__wallet = wallet
 
-    def __api_request(self, api_url):
+    def __api_request(self, api_url):  # TODO: masterise !
         """Make Etherscan API call"""
         try:
             response = requests.get(api_url, timeout=5)
@@ -42,12 +42,17 @@ class EtherWallet():
         cust_url = cust_url.replace(':api_key:', self.__api_key)
         ether_json = self.__api_request(cust_url)
         if ether_json is not None:
-            self.balance = round(float(ether_json['result']) / 10e17, 5)
+            self.__balance = round(float(ether_json['result']) / 10e17, 5)
             return True
 
-        self.last_error = 'Can\'t retrieve json result'
+        if self.last_error is None:
+            self.last_error = 'Can\'t retrieve json result'
         return None
 
     @property
     def wallet(self):
         return self.__wallet
+
+    @property
+    def balance(self):
+        return self.__balance

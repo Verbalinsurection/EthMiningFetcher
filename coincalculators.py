@@ -48,5 +48,6 @@ class CoinCalculators():
             eth_pay.eth_month = round(cc_json['rewardsInMonth'], 5)
             return eth_pay
 
-        self.last_error = 'Can\'t retrieve json result'
+        if self.last_error is None:
+            self.last_error = 'Can\'t retrieve json result'
         return None
