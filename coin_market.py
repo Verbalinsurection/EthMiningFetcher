@@ -2,8 +2,9 @@
 
 """Coin market API module"""
 
-import requests
 from datetime import datetime
+
+from .api_request import Api
 
 BASE_API = 'https://api.coingecko.com/api/v3'
 API_COIN = BASE_API + '/coins/markets?vs_currency=:fiat:&ids=:crypto:'
@@ -15,45 +16,31 @@ class Coin():
         self.__fiat = fiat
         self.__crypto = crypto
 
-    def __api_request(self, api_url):
-        """Make Ethermine API call"""
-        try:
-            response = requests.get(api_url, timeout=5)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as errh:
-            self.last_error = errh
-            return None
-        except requests.exceptions.ConnectionError as errc:
-            self.last_error = errc
-            return None
-        except requests.exceptions.Timeout as errt:
-            self.last_error = errt
-            return None
-        except requests.exceptions.RequestException as err:
-            self.last_error = err
-            return None
-
     def update(self):
         """Update coin market informations."""
-        self.last_error = None
+        api = Api()
         cust_url = API_COIN.replace(':fiat:', self.__fiat)
         cust_url = cust_url.replace(':crypto:', self.__crypto)
-        coin_json = self.__api_request(cust_url)
+        coin_json = api.api_request(cust_url)
+        self.__last_error = api.last_error
         if coin_json is not None:
             self.price = round(coin_json[0]['current_price'], 2)
             self.pc_24h = round(coin_json[0]['price_change_24h'], 2)
             self.ath = round(coin_json[0]['ath'], 2)
             self.last_update = datetime.strptime(
                                     coin_json[0]['last_updated'],
-                                    "%Y-%m-%dT%H:%M:%S.%f%z").astimezone()
+                                    "%Y-%m-%dT%H:%M:%S.%f%z")
             self.last_update_txt = self.last_update.strftime('%Y-%m-%d %H:%M')
             return True
 
-        if self.last_error is None:
-            self.last_error = 'Can\'t retrieve json result'
+        if self.__last_error is None:
+            self.__last_error = 'Can\'t retrieve json result'
         return False
 
     @property
     def fiat(self):
         return self.__fiat
+
+    @property
+    def last_error(self):
+        return self.__last_error

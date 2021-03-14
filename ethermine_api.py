@@ -4,8 +4,7 @@
 
 from datetime import datetime, timedelta
 
-import requests
-
+from .api_request import Api
 from .ethpay import EthPay
 
 ETHM_API_BASE = 'https://api.ethermine.org'
@@ -42,50 +41,35 @@ class Ethermine():
 
     def update(self):
         """Update Ethermine informations."""
-        self.last_error = None
+        self.__last_error = None
         self.__update_pool()
         self.__update_miner_dash()
         self.__update_miner_payouts()
         self.__update_stats_coin()
         self.__update_next_payout()
-        if self.last_error is not None:
+        if self.__last_error is not None:
             return False
         return True
 
-    def api_request(self, api_url):
-        """Make Ethermine API call"""
-        try:
-            response = requests.get(api_url, timeout=5)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as errh:
-            self.last_error = errh
-            return None
-        except requests.exceptions.ConnectionError as errc:
-            self.last_error = errc
-            return None
-        except requests.exceptions.Timeout as errt:
-            self.last_error = errt
-            return None
-        except requests.exceptions.RequestException as err:
-            self.last_error = err
-            return None
-
     def __update_pool(self):
         """Update Ethermine pool informations."""
-        pool_json = self.api_request(ETHM_API_POOLSTATS)
+        api = Api()
+        pool_json = api.api_request(ETHM_API_POOLSTATS)
+        self.__last_error = api.last_error
         if pool_json is None:
             self.pool_state = 'Unavailable'
-            if self.last_error is None:
-                self.last_error = \
+            if self.__last_error is None:
+                self.__last_error = \
                     '__update_pool -- Can\'t retrieve json result'
         else:
             self.pool_state = pool_json['status']
 
     def __update_miner_dash(self):
         """Update Ethermine miner dashboard."""
+        api = Api()
         cust_url = ETHM_API_MINERDASH.replace(MINER_TAG, self.__wallet)
-        dash_json = self.api_request(cust_url)
+        dash_json = api.api_request(cust_url)
+        self.__last_error = api.last_error
         if dash_json is not None:
             try:
                 data_json = dash_json['data']
@@ -94,8 +78,7 @@ class Ethermine():
                     worker = Worker(self.__wallet, json_worker, self.__history)
                     self.workers.append(worker)
                 cstat_json = data_json['currentStatistics']
-                self.stat_time = datetime.fromtimestamp(
-                    cstat_json['time']).astimezone()
+                self.stat_time = datetime.utcfromtimestamp(cstat_json['time'])
                 self.stat_time_txt = self.stat_time.strftime(DATE_FORMAT)
                 self.reported_hrate = hrate_mh(cstat_json['reportedHashrate'])
                 self.current_hrate = hrate_mh(cstat_json['currentHashrate'])
@@ -116,10 +99,10 @@ class Ethermine():
                     self.max_index = len(self.stats_histo) - 1
                     self.calc_avg()
             except KeyError as e:
-                self.last_error = '__update_miner_dash: ' + str(e)
+                self.__last_error = '__update_miner_dash: ' + str(e)
         else:
-            if self.last_error is None:
-                self.last_error = \
+            if self.__last_error is None:
+                self.__last_error = \
                     '__update_miner_dash -- Can\'t retrieve json result'
 
     def __sub_avg(self, h_range, max_index):
@@ -143,16 +126,18 @@ class Ethermine():
         self.avg_hrate_24[2] = self.__sub_avg(nb_entry - 6, max_index - 6)
 
     def __update_miner_payouts(self):
+        api = Api()
         cust_url = ETHM_API_MINERPAYOUT.replace(MINER_TAG, self.__wallet)
-        payouts_json = self.api_request(cust_url)
+        payouts_json = api.api_request(cust_url)
+        self.__last_error = api.last_error
         if payouts_json is not None:
             self.payouts.clear()
             for json_payout in payouts_json['data']:
                 payout = Payout(json_payout)
                 self.payouts.append(payout)
         else:
-            if self.last_error is None:
-                self.last_error = \
+            if self.__last_error is None:
+                self.__last_error = \
                     '__update_miner_payouts -- Can\'t retrieve json result'
             return
         time_delta = datetime.now().astimezone() - self.payouts[0].paid_on
@@ -165,8 +150,10 @@ class Ethermine():
         self.gain_progress = self.unpaid_balance / self.min_payout
 
     def __update_stats_coin(self):
+        api = Api()
         cust_url = ETHM_API_MINERSTAT.replace(MINER_TAG, self.__wallet)
-        stats_json = self.api_request(cust_url)
+        stats_json = api.api_request(cust_url)
+        self.__last_error = api.last_error
         if stats_json is not None:
             coins_pmin = stats_json['data']['coinsPerMin']
             self.eth_pay_stats.eth_hour = round(coins_pmin * 60, 5)
@@ -174,8 +161,8 @@ class Ethermine():
             self.eth_pay_stats.eth_week = round(coins_pmin * 60 * 24 * 7, 5)
             self.eth_pay_stats.eth_month = round(coins_pmin * 60 * 24 * 30, 5)
         else:
-            if self.last_error is None:
-                self.last_error = \
+            if self.__last_error is None:
+                self.__last_error = \
                     '__update_stats_coin -- Can\'t retrieve json result'
 
     def __update_next_payout(self):
@@ -193,6 +180,10 @@ class Ethermine():
     @property
     def pool_name(self):
         return self.__pool_name
+
+    @property
+    def last_error(self):
+        return self.__last_error
 
 
 class EthermineH():
@@ -225,9 +216,11 @@ class Worker(Ethermine):
             self.__process_histo()
 
     def __process_histo(self):
+        api = Api()
         cust_url = ETHM_API_WORKER.replace(MINER_TAG, self.__wallet)
         cust_url = cust_url.replace(WORKER_TAG, self.name)
-        dash_json = self.api_request(cust_url)
+        dash_json = api.api_request(cust_url)
+        self.__last_error = api.last_error
         if dash_json is not None:
             try:
                 data_json = dash_json['data']
@@ -242,9 +235,13 @@ class Worker(Ethermine):
             except KeyError as e:
                 print(e)
         else:
-            if self.last_error is None:
-                self.last_error = \
+            if self.__last_error is None:
+                self.__last_error = \
                     '__process_histo -- Can\'t retrieve json result'
+
+    @property
+    def last_error(self):
+        return self.__last_error
 
 
 class Payout():
