@@ -14,16 +14,16 @@ class Api():
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as errh:
-            self.last_error = errh
+            self.__last_error = errh
             return None
         except requests.exceptions.ConnectionError as errc:
-            self.last_error = errc
+            self.__last_error = errc
             return None
         except requests.exceptions.Timeout as errt:
-            self.last_error = errt
+            self.__last_error = errt
             return None
         except requests.exceptions.RequestException as err:
-            self.last_error = err
+            self.__last_error = err
             return None
 
     @property
