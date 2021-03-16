@@ -249,4 +249,4 @@ class Payout():
         self.paid_on = datetime.fromtimestamp(
             json_data['paidOn']).astimezone()
         self.paid_on_txt = self.paid_on.strftime(DATE_FORMAT)
-        self.amount = json_data['amount']
+        self.amount = round(json_data['amount'] / 10e17, 5)
