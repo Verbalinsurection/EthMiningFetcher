@@ -3,6 +3,7 @@
 """Ethermine API module"""
 
 from datetime import datetime, timedelta
+import pytz
 
 from .api_request import Api
 from .ethpay import EthPay
@@ -38,6 +39,7 @@ class Ethermine():
         self.avg_hrate_24 = [0.0] * 3  # actual, 30m, 60m
         self.eth_pay_stats = EthPay()
         self.eth_pay_from_last = EthPay()
+        self.__last_error = None
 
     def update(self):
         """Update Ethermine informations."""
@@ -140,7 +142,7 @@ class Ethermine():
                 self.__last_error = \
                     '__update_miner_payouts -- Can\'t retrieve json result'
             return
-        time_delta = datetime.now().astimezone() - self.payouts[0].paid_on
+        time_delta = datetime.utcnow() - self.payouts[0].paid_on
         time_delta_m = time_delta.days * 1440 + (time_delta.seconds / 60)
         gain_min = self.unpaid_balance / (time_delta_m)
         self.eth_pay_from_last.eth_hour = round(gain_min * 60, 5)
@@ -156,6 +158,7 @@ class Ethermine():
         self.__last_error = api.last_error
         if stats_json is not None:
             coins_pmin = stats_json['data']['coinsPerMin']
+            self.eth_pay_stats.eth_min = coins_pmin
             self.eth_pay_stats.eth_hour = round(coins_pmin * 60, 5)
             self.eth_pay_stats.eth_day = round(coins_pmin * 60 * 24, 5)
             self.eth_pay_stats.eth_week = round(coins_pmin * 60 * 24 * 7, 5)
@@ -168,10 +171,24 @@ class Ethermine():
     def __update_next_payout(self):
         to_gain = self.min_payout - self.unpaid_balance
         minutes_to_tresh = to_gain / (self.eth_pay_stats.eth_hour / 60)
+        next_week = self.payouts[0].paid_on.replace(tzinfo=pytz.UTC) \
+            + timedelta(days=7)
+
         self.next_payout = \
-            datetime.now().astimezone() + \
+            datetime.utcnow() + \
             timedelta(minutes=minutes_to_tresh)
-        self.next_payout_txt = self.next_payout.strftime(DATE_FORMAT)
+        self.next_payout = self.next_payout.replace(tzinfo=pytz.UTC)
+
+        if self.next_payout > next_week:
+            self.next_payout = next_week
+
+        time_diff_next = self.next_payout - datetime.now().astimezone()
+
+        self.unpaid_at_next = round(
+            (time_diff_next.total_seconds() *
+             (self.eth_pay_stats.eth_min / 60) + self.unpaid_balance), 5)
+        self.next_payout_txt = \
+            self.next_payout.strftime(DATE_FORMAT)
 
     @property
     def wallet(self):
@@ -246,7 +263,7 @@ class Worker(Ethermine):
 
 class Payout():
     def __init__(self, json_data):
-        self.paid_on = datetime.fromtimestamp(
-            json_data['paidOn']).astimezone()
+        self.paid_on = datetime.utcfromtimestamp(
+            json_data['paidOn'])
         self.paid_on_txt = self.paid_on.strftime(DATE_FORMAT)
         self.amount = round(json_data['amount'] / 10e17, 5)
