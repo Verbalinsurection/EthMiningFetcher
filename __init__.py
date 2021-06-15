@@ -5,4 +5,4 @@ from .etherscan import EtherWallet
 from .ethpay import EthPay
 
 __all__ = ['Coin', 'CoinCalculators', 'Ethermine', 'EtherWallet', 'EthPay']
-__version__ = '2.1.1'
+__version__ = '2.1.2'
