@@ -1,8 +1,8 @@
 from .coin_market import Coin
-from .coincalculators import CoinCalculators
 from .ethermine_api import Ethermine
 from .etherscan import EtherWallet
 from .ethpay import EthPay
+from .whattomine import WhatToMine
 
-__all__ = ['Coin', 'CoinCalculators', 'Ethermine', 'EtherWallet', 'EthPay']
-__version__ = '2.1.2'
+__all__ = ['Coin', 'Ethermine', 'EtherWallet', 'EthPay', 'WhatToMine']
+__version__ = '2.2.0'
