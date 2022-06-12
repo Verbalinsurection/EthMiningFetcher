@@ -171,31 +171,17 @@ class Ethermine():
     def __update_next_payout(self):
         to_gain = self.min_payout - self.unpaid_balance
         minutes_to_tresh = to_gain / (self.eth_pay_stats.eth_hour / 60)
-        next_week = self.payouts[0].paid_on.replace(tzinfo=pytz.UTC) \
-            + timedelta(days=7)
 
         self.next_payout = \
             datetime.utcnow() + \
             timedelta(minutes=minutes_to_tresh)
         self.next_payout = self.next_payout.replace(tzinfo=pytz.UTC)
 
-        if self.next_payout > next_week:
-            self.next_payout = next_week
-
         time_diff_next = self.next_payout - datetime.now().astimezone()
 
         self.unpaid_at_next = round(
             (time_diff_next.total_seconds() *
              (self.eth_pay_stats.eth_min / 60) + self.unpaid_balance), 5)
-
-        if self.unpaid_at_next < 0.1:
-            to_gain = 0.1 - self.unpaid_balance
-            minutes_to_tresh = to_gain / (self.eth_pay_stats.eth_hour / 60)
-            self.next_payout = \
-                datetime.utcnow() + \
-                timedelta(minutes=minutes_to_tresh)
-            self.next_payout = self.next_payout.replace(tzinfo=pytz.UTC)
-            self.unpaid_at_next = 0.1
 
         self.next_payout_txt = \
             self.next_payout.strftime(DATE_FORMAT)
